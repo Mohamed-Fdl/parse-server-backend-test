@@ -38,6 +38,7 @@ module.exports = {
         likesCount: { type: 'Number' },
         commentsCount: { type: 'Number' },
       },
+      indexes: { author_idx: { author: 1 } },
       classLevelPermissions: userContent,
     },
     {
@@ -47,6 +48,7 @@ module.exports = {
         author: pointer('_User'),
         text: { type: 'String' },
       },
+      indexes: { post_idx: { post: 1 }, author_idx: { author: 1 } },
       classLevelPermissions: userContent,
     },
     {
