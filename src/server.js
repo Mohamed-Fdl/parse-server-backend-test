@@ -15,7 +15,7 @@ async function ensureLikeIndex(databaseURI) {
   }
 }
 
-async function startServer({ port, databaseURI, masterKey }) {
+async function startServer({ port, databaseURI, masterKey, rateLimit = 60 }) {
   if (!masterKey) throw new Error('PARSE_MASTER_KEY is required');
 
   const parseServer = new ParseServer({
@@ -30,6 +30,23 @@ async function startServer({ port, databaseURI, masterKey }) {
     enforcePrivateUsers: false,
     // users email is hidden from everybody except the user themself.
     protectedFields: { _User: { '*': ['email'] } },
+    // Abuse protection: `rateLimit` requests per minute per IP on the write-heavy entry points.
+    rateLimit: ['/users', '/functions/toggleLike'].map((requestPath) => ({
+      requestPath,
+      requestTimeWindow: 60 * 1000,
+      requestCount: rateLimit,
+      errorResponseMessage: 'Too many requests, slow down.',
+    })),
+    // Bound the cost of a single query.
+    requestComplexity: {
+      includeDepth: 3,
+      includeCount: 10,
+      subqueryDepth: 3,
+      queryDepth: 5,
+      graphQLDepth: 5,
+      graphQLFields: 100,
+      batchRequestLimit: 20,
+    },
   });
   await parseServer.start();
   await ensureLikeIndex(databaseURI);
@@ -52,7 +69,13 @@ if (require.main === module) {
     databaseURI: process.env.DATABASE_URI || 'mongodb://localhost:27017/blog',
     masterKey: process.env.PARSE_MASTER_KEY,
   })
-    .then(() => console.log(`Parse Server running on http://localhost:${port}/parse`))
+    .then(({ parseServer }) => {
+      console.log(`Parse Server running on http://localhost:${port}/parse`);
+      // Let in-flight requests finish and close the DB connection on stop (Docker, Ctrl+C).
+      for (const signal of ['SIGINT', 'SIGTERM']) {
+        process.once(signal, () => parseServer.handleShutdown().finally(() => process.exit(0)));
+      }
+    })
     .catch((err) => {
       console.error(err.message);
       process.exit(1);
