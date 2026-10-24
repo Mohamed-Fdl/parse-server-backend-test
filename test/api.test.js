@@ -12,7 +12,7 @@ let server;
 before(async () => {
   mongo = await MongoMemoryServer.create();
   const { startServer } = require('../src/server');
-  server = await startServer({ port: PORT, databaseURI: mongo.getUri(), masterKey: MASTER_KEY });
+  server = await startServer({ port: PORT, databaseURI: mongo.getUri(), masterKey: MASTER_KEY, rateLimit: 10000 });
 });
 
 after(async () => {
@@ -220,4 +220,23 @@ test('bonus: userStats counts posts, comments and likes received', async () => {
   const stats = await api('POST', '/functions/userStats', { body: { userId: alice.id } });
   assert.deepEqual(stats.body.result, { posts: 2, comments: 1, likesReceived: 1 });
   assert.equal((await api('POST', '/functions/userStats', { body: { userId: 'nope' } })).body.code, 101);
+});
+
+test('rate limit: too many toggleLike calls are rejected', async () => {
+  const { startServer } = require('../src/server');
+  const limited = await startServer({ port: PORT + 1, databaseURI: mongo.getUri('limited'), masterKey: MASTER_KEY, rateLimit: 3 });
+  try {
+    const statuses = [];
+    for (let i = 0; i < 5; i++) {
+      const res = await fetch(`http://localhost:${PORT + 1}/parse/functions/toggleLike`, {
+        method: 'POST',
+        headers: { 'X-Parse-Application-Id': 'blog-app', 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      statuses.push(res.status);
+    }
+    assert.ok(statuses.includes(429), `expected a 429, got ${statuses}`);
+  } finally {
+    await limited.parseServer.handleShutdown();
+  }
 });
