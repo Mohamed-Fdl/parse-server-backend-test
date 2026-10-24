@@ -8,8 +8,6 @@ npm test                 # in-memory MongoDB (downloaded on first run)
 npm run lint
 ```
 CI (`.github/workflows/ci.yml`) runs lint and tests on every push.
-```
-```
 
 ## Done
 All Must items R1–R8 and all Bonus items (13 tests in `test/api.test.js`).
